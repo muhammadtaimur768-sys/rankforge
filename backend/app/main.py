@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 from . import db
 from .agent import RECURSION_LIMIT, build_graph
-from .config import ADMIN_KEY, AUTH_SECRET, PRICE_IN, PRICE_OUT, SITE_URL
+from .config import ADMIN_KEY, API_URL, AUTH_SECRET, PRICE_IN, PRICE_OUT, SITE_URL
 from .llm import text_of
 
 log = logging.getLogger("rankforge")
@@ -377,16 +377,23 @@ async def me_memory_delete(key: str, uid: str = Depends(current_user)):
 
 
 # ====================================================================== public affiliate site
+HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
 async def _site_meta(uid: str) -> dict:
     mem = await db.get_memory(uid)
-    return {"site_name": mem.get("site_name") or f"{uid}'s picks", "niche": mem.get("niche")}
+    accent = mem.get("brand_color")
+    return {"site_name": mem.get("site_name") or f"{uid}'s picks", "niche": mem.get("niche"),
+            "tagline": mem.get("tagline"), "audience": mem.get("audience"), "about": mem.get("about"),
+            "accent": accent if accent and HEX_RE.match(accent) else None}
 
 
 @app.get("/api/public/sites")
 async def public_sites():
     rows = await db.fetch(
-        """SELECT user_id, COUNT(*)::int AS published, MAX(published_at) AS last_published
-           FROM rf_articles WHERE status='published' GROUP BY user_id ORDER BY MAX(published_at) DESC LIMIT 50""")
+        """SELECT a.user_id, COUNT(*)::int AS published, MAX(a.published_at) AS last_published
+           FROM rf_articles a JOIN rf_memory m ON m.user_id=a.user_id AND m.key='site_name'
+           WHERE a.status='published' GROUP BY a.user_id ORDER BY MAX(a.published_at) DESC LIMIT 50""")
     for r in rows:
         r.update(await _site_meta(r["user_id"]))
     return rows
@@ -395,9 +402,11 @@ async def public_sites():
 @app.get("/api/public/site/{uid}")
 async def public_site(uid: str):
     arts = await db.fetch(
-        """SELECT title, slug, meta_description, keyword, word_count, published_at FROM rf_articles
+        """SELECT title, slug, meta_description, keyword, word_count, published_at, views FROM rf_articles
            WHERE user_id=%s AND status='published' ORDER BY published_at DESC""", uid)
-    return {"user_id": uid, **(await _site_meta(uid)), "articles": arts}
+    popular = sorted(arts, key=lambda a: -a["views"])[:3]
+    return {"user_id": uid, **(await _site_meta(uid)), "articles": arts,
+            "popular": [{"title": a["title"], "slug": a["slug"], "views": a["views"]} for a in popular]}
 
 
 @app.get("/api/public/site/{uid}/{slug}")
@@ -409,7 +418,14 @@ async def public_article(uid: str, slug: str):
     if not a:
         raise HTTPException(404, "Not found")
     await db.execute("INSERT INTO rf_events (user_id, article_id, kind) VALUES (%s,%s,'view')", uid, a["id"])
-    return {**a, **(await _site_meta(uid))}
+    links = await db.fetch("SELECT id, anchor FROM rf_links WHERE article_id=%s ORDER BY id", a["id"])
+    related = await db.fetch(
+        """SELECT title, slug, meta_description, published_at FROM rf_articles
+           WHERE user_id=%s AND status='published' AND id<>%s ORDER BY published_at DESC LIMIT 3""", uid, a["id"])
+    article_id = a.pop("id")
+    return {**a, **(await _site_meta(uid)), "article_id": article_id,
+            "links": [{"anchor": link["anchor"], "href": f"{API_URL}/go/{link['id']}"} for link in links],
+            "related": related}
 
 
 # ====================================================================== admin
