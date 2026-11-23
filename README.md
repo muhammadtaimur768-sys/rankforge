@@ -12,6 +12,7 @@ RankForge is a multi-agent system that takes a niche site from keyword idea to p
 | Demo affiliate sites | [/blog](https://rankforge-site-red.vercel.app/blog): TrailPicks, BrewLab, DeskWise, PawPicks |
 | Admin dashboard | `/admin` (key set in `ADMIN_KEY`) |
 | Demo video (3 min) | https://youtu.be/EC0IH3lD06E |
+| Product canvas (workshop) | [PDF on Google Drive](https://drive.google.com/file/d/1f3Ll29AnrS7oCKJVFvaJn-1ac2xA8wFV/view?usp=sharing) |
 
 ![demo](docs/demo.gif)
 
