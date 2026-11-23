@@ -5,6 +5,7 @@ so the model cannot touch another user's data even if it tries.
 """
 import asyncio
 import html
+from datetime import date
 import json
 import re
 from typing import Annotated
@@ -167,7 +168,8 @@ async def write_article(keyword: str, config: RunnableConfig, title: str | None 
     word_count = max(300, min(1500, int(word_count or 700)))
     mem = await db.get_memory(uid)
     ctx = "; ".join(f"{k}: {v}" for k, v in mem.items()) or "none"
-    prompt = (f"Target keyword: {keyword}\nTitle idea: {title or 'your choice'}\nLength: about {word_count} words\n"
+    prompt = (f"Today's date: {date.today():%B %d, %Y} (never mention an older year as current)\n"
+              f"Target keyword: {keyword}\nTitle idea: {title or 'your choice'}\nLength: about {word_count} words\n"
               f"Tone: {tone or mem.get('tone', 'friendly, expert')}\nSite/user context: {ctx}\nExtra notes: {notes or 'none'}")
     resp = await writer_llm.ainvoke([SystemMessage(WRITER_SYSTEM), HumanMessage(prompt)], config=config)
     raw = text_of(resp).strip()
